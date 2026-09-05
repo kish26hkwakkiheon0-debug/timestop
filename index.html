@@ -2,8 +2,15 @@
 <html lang="ko">
 <head>
 <meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
 <title>Time Stop Puzzle</title>
 <style>
+* {
+  box-sizing: border-box;
+  -webkit-touch-callout: none;
+  -webkit-user-select: none;
+  user-select: none;
+}
 body {
   margin: 0;
   background: #111;
@@ -11,16 +18,21 @@ body {
   justify-content: center;
   align-items: center;
   height: 100vh;
+  overflow: hidden;
 }
 canvas {
   background: #222;
   border: 2px solid #555;
+  max-width: 100%;
+  max-height: 100vh;
+  object-fit: contain;
+  touch-action: none;
 }
 </style>
 </head>
 <body>
 
-<canvas id="game" width="800" height="450"></canvas>
+<canvas id="game" width="800" height="550"></canvas>
 
 <script>
 /* ================= 기본 ================= */
@@ -34,6 +46,55 @@ addEventListener("keyup", e => keys[e.key] = false);
 let gameMode = "menu"; // menu | play
 let stageIndex = 0;
 let deaths = 0;
+
+/* ================= 터치 입력 관리 ================= */
+const touchState = {
+  left: false,
+  right: false,
+  jump: false,
+  shift: false
+};
+
+// 모바일 버튼 정의 (화면 하단 영역: y = 450 ~ 550)
+const buttons = {
+  left:  { x: 20,  y: 465, w: 70, h: 70, label: "◀" },
+  right: { x: 105, y: 465, w: 70, h: 70, label: "▶" },
+  jump:  { x: 610, y: 465, w: 80, h: 70, label: "JUMP" },
+  shift: { x: 700, y: 465, w: 80, h: 70, label: "STOP" }
+};
+
+function handleTouches(e) {
+  if (e.type !== 'touchstart' && e.type !== 'touchmove' && e.type !== 'touchend' && e.type !== 'touchcancel') return;
+  
+  // 터치 상태 초기화
+  touchState.left = false;
+  touchState.right = false;
+  touchState.jump = false;
+  touchState.shift = false;
+
+  const rect = canvas.getBoundingClientRect();
+  const scaleX = canvas.width / rect.width;
+  const scaleY = canvas.height / rect.height;
+
+  for (let i = 0; i < e.touches.length; i++) {
+    const touch = e.touches[i];
+    const tx = (touch.clientX - rect.left) * scaleX;
+    const ty = (touch.clientY - rect.top) * scaleY;
+
+    // 각 버튼별 범위 체크
+    for (const key in buttons) {
+      const b = buttons[key];
+      if (tx >= b.x && tx <= b.x + b.w && ty >= b.y && ty <= b.y + b.h) {
+        touchState[key] = true;
+      }
+    }
+  }
+}
+
+canvas.addEventListener("touchstart", handleTouches, { passive: false });
+canvas.addEventListener("touchmove", handleTouches, { passive: false });
+canvas.addEventListener("touchend", handleTouches, { passive: false });
+canvas.addEventListener("touchcancel", handleTouches, { passive: false });
 
 /* ================= 플레이어 ================= */
 const player = {
@@ -54,19 +115,19 @@ let cooldown = 0;
 const STOP_MAX = 120;
 const COOL_MAX = 240;
 
-/* ================= 스테이지 ================= */
+/* ================= 스테이지 데이터 ================= */
 const stages = [
   { name:"Stage 1",
     lasers:[{x:400,y:200,w:10,h:80,vy:2,minY:130,maxY:380}],
     platforms:[],
     goal:{x:670,y:350,w:30,h:30}
   },
- { name:"Stage 2",
-  lasers:[{x:500,y:150,w:10,h:80,vy:2,minY:100,maxY:330}],
-  platforms:[{x:450,y:280,w:120,h:12}],
-  lava:[{x:450,y:330,w:120,h:120}],
-  goal:{x:650,y:200,w:30,h:30}
-},
+  { name:"Stage 2",
+    lasers:[{x:500,y:150,w:10,h:80,vy:2,minY:100,maxY:330}],
+    platforms:[{x:450,y:280,w:120,h:12}],
+    lava:[{x:450,y:330,w:120,h:120}],
+    goal:{x:650,y:200,w:30,h:30}
+  },
   { name:"Stage 3",
     lasers:[
       {x:300,y:180,w:10,h:80,vy:3,minY:100,maxY:330},
@@ -76,10 +137,10 @@ const stages = [
       {x:320,y:300,w:120,h:12},
       {x:520,y:250,w:120,h:12}
     ],
-lava:[
-{x:320,y:330,w:120,h:120},
-{x:520,y:330,w:120,h:120}
-],
+    lava:[
+      {x:320,y:330,w:120,h:120},
+      {x:520,y:330,w:120,h:120}
+    ],
     goal:{x:740,y:180,w:30,h:30}
   },
   { name:"Stage 4",
@@ -89,10 +150,10 @@ lava:[
       {x:550,y:220,w:10,h:100,vy:3,minY:100,maxY:380}
     ],
     platforms:[{x:350,y:300,w:120,h:12}],
- lava:[
-{x:350,y:330,w:120,h:120},
-{x:710,y:330,w:100,h:100}
-],
+    lava:[
+      {x:350,y:330,w:120,h:120},
+      {x:710,y:330,w:100,h:100}
+    ],
     goal:{x:740,y:260,w:30,h:30}
   },
   { name:"Stage 5",
@@ -104,11 +165,11 @@ lava:[
       {x:260,y:300,w:100,h:12},
       {x:500,y:260,w:100,h:12}
     ],
-lava:[
-{x:260,y:330,w:120,h:120},
-{x:380,y:330,w:120,h:120},
-{x:500,y:330,w:120,h:120}
-],
+    lava:[
+      {x:260,y:330,w:120,h:120},
+      {x:380,y:330,w:120,h:120},
+      {x:500,y:330,w:120,h:120}
+    ],
     goal:{x:740,y:220,w:30,h:30}
   },
   { name:"Stage 6",
@@ -120,11 +181,11 @@ lava:[
       {x:300,y:310,w:100,h:12},
       {x:520,y:240,w:100,h:12}
     ],
-lava:[
-{x:280,y:330,w:120,h:120},
-{x:400,y:330,w:120,h:120},
-{x:520,y:330,w:120,h:120}
-],
+    lava:[
+      {x:280,y:330,w:120,h:120},
+      {x:400,y:330,w:120,h:120},
+      {x:520,y:330,w:120,h:120}
+    ],
     goal:{x:740,y:170,w:30,h:30}
   },
   { name:"Stage 7",
@@ -140,14 +201,14 @@ lava:[
       {x:580,y:200,w:80,h:12},
       {x:0,y:180,w:450,h:12}
     ],
-lava:[
-{x:680,y:330,w:120,h:120},
-{x:190,y:135,w:100,h:100},
-{x:90,y:350,w:80,h:80}
-],
+    lava:[
+      {x:680,y:330,w:120,h:120},
+      {x:190,y:135,w:100,h:100},
+      {x:90,y:350,w:80,h:80}
+    ],
     goal:{x:20,y:130,w:30,h:30}
   },
- { name:"Stage 8",
+  { name:"Stage 8",
     lasers:[
       {x:200,y:-17,w:10,h:270,vy:0},
       {x:430,y:30,w:10,h:80,vy:3,minY:-20,maxY:230},
@@ -160,15 +221,15 @@ lava:[
       {x:680,y:300,w:90,h:12},
       {x:210,y:240,w:600,h:12} 
     ],
-lava:[
-{x:710,y:330,w:120,h:120},
-{x:760,y:130,w:120,h:120},
-{x:600,y:330,w:120,h:120},
-{x:330,y:200,w:100,h:100}
-],
+    lava:[
+      {x:710,y:330,w:120,h:120},
+      {x:760,y:130,w:120,h:120},
+      {x:600,y:330,w:120,h:120},
+      {x:330,y:200,w:100,h:100}
+    ],
     goal:{x:220,y:130,w:30,h:30}
   },
-{ name:"Stage 9",
+  { name:"Stage 9",
     lasers:[
       {x:0,y:300,w:270,h:10,vy:0},
       {x:270,y:300,w:150,h:10,vy:2,minY:300,maxY:380},
@@ -187,14 +248,14 @@ lava:[
       {x:750,y:200,w:120,h:12}, 
       {x:750,y:100,w:120,h:12}
     ],
-lava:[
-{x:-47,y:210,w:80,h:80},
-{x:700,y:330,w:120,h:120}, 
-{x:580,y:330,w:120,h:120}
-],
+    lava:[
+      {x:-47,y:210,w:80,h:80},
+      {x:700,y:330,w:120,h:120}, 
+      {x:580,y:330,w:120,h:120}
+    ],
     goal:{x:700,y:20,w:30,h:30}
   },
-{ name:"Stage 10",
+  { name:"Stage 10",
     lasers:[
       {x:120,y:0,w:10,h:120,vy:3,minY:-200,maxY:260},
       {x:740,y:60,w:10,h:120,vy:3,minY:20,maxY:330},
@@ -221,12 +282,12 @@ lava:[
       {x:20,y:150,w:100,h:12},
       {x:150,y:50,w:100,h:12},
     ],
-lava:[
-{x:750,y:350,w:80,h:80},
-{x:480,y:240,w:80,h:80},
-{x:675,y:350,w:80,h:80},
-{x:320,y:350,w:80,h:80},
-],
+    lava:[
+      {x:750,y:350,w:80,h:80},
+      {x:480,y:240,w:80,h:80},
+      {x:675,y:350,w:80,h:80},
+      {x:320,y:350,w:80,h:80},
+    ],
     goal:{x:0,y:20,w:30,h:30}
   }
 ];
@@ -239,40 +300,33 @@ function hit(a,b){
   return a.x<b.x+b.w && a.x+a.w>b.x &&
          a.y<b.y+b.h && a.y+a.h>b.y;
 }
-function hitRotatedRect(player, laser){	//그거
 
+function hitRotatedRect(player, laser){
   const cx = laser.x + laser.w/2;
   const cy = laser.y + laser.h/2;
   const angle = -(laser.angle || 0);
 
   const points = [
-    {x: player.x, y: player.y}, // 좌상
-    {x: player.x + player.w, y: player.y}, // 우상
-    {x: player.x, y: player.y + player.h}, // 좌하
-    {x: player.x + player.w, y: player.y + player.h} // 우하
+    {x: player.x, y: player.y},
+    {x: player.x + player.w, y: player.y},
+    {x: player.x, y: player.y + player.h},
+    {x: player.x + player.w, y: player.y + player.h}
   ];
 
   for(let p of points){
-
     const dx = p.x - cx;
     const dy = p.y - cy;
-
     const rx = dx * Math.cos(angle) - dy * Math.sin(angle);
     const ry = dx * Math.sin(angle) + dy * Math.cos(angle);
 
-    if(
-      Math.abs(rx) < laser.w/2 &&
-      Math.abs(ry) < laser.h/2
-    ){
+    if(Math.abs(rx) < laser.w/2 && Math.abs(ry) < laser.h/2){
       return true;
     }
   }
-
   return false;
 }
 
 function hitCircle(rect, circle){
-
   const cx = circle.x + circle.w/2;
   const cy = circle.y + circle.h/2;
   const r = circle.w/2;
@@ -303,17 +357,13 @@ const stageButtons = [];
 
 function buildMenu(){
   stageButtons.length = 0;
-
   const startX = 200;
   const startY = 220;
-
   const colWidth = 220;
   const rowHeight = 35;
-
-  const rows = 5; // 한 열에 들어갈 개수
+  const rows = 5;
 
   for(let i=0;i<stages.length;i++){
-
     const col = Math.floor(i / rows);
     const row = i % rows;
 
@@ -325,26 +375,28 @@ function buildMenu(){
       stage: i
     });
   }
-}buildMenu();
-/* ================= 메뉴 클릭 ================= */
-canvas.onclick = (e)=>{
-  if(gameMode==="menu"){
+}
+buildMenu();
 
-    const rect = canvas.getBoundingClientRect();
-    const mx = e.clientX - rect.left;
-    const my = e.clientY - rect.top;
+/* ================= 클릭 / 터치 메뉴 처리 ================= */
+function handleMenuClick(clientX, clientY) {
+  if (gameMode !== "menu") return;
+  const rect = canvas.getBoundingClientRect();
+  const mx = (clientX - rect.left) * (canvas.width / rect.width);
+  const my = (clientY - rect.top) * (canvas.height / rect.height);
 
-    stageButtons.forEach(b=>{
-      if(mx>b.x && mx<b.x+b.w && my>b.y && my<b.y+b.h){
-        stageIndex = b.stage;
-        deaths = 0;
-        loadStage(stageIndex);
-        gameMode="play";
-      }
-    });
+  stageButtons.forEach(b => {
+    if (mx > b.x && mx < b.x + b.w && my > b.y && my < b.y + b.h) {
+      stageIndex = b.stage;
+      deaths = 0;
+      loadStage(stageIndex);
+      gameMode = "play";
+    }
+  });
+}
 
-  }
-};
+canvas.onclick = (e) => handleMenuClick(e.clientX, e.clientY);
+
 /* ================= 업데이트 ================= */
 function update(){
   if(gameMode!=="play") return;
@@ -355,13 +407,18 @@ function update(){
   } else if(cooldown>0) cooldown--;
 
   player.vx=0;
-  if(keys["ArrowLeft"]) player.vx=-player.speed;
-  if(keys["ArrowRight"]) player.vx=player.speed;
-  if((keys["ArrowUp"]||keys[" "])&&player.onGround){
-    player.vy=-player.jump; player.onGround=false;
+  // 키보드 OR 터치버튼 입력 병합
+  if(keys["ArrowLeft"] || touchState.left) player.vx = -player.speed;
+  if(keys["ArrowRight"] || touchState.right) player.vx = player.speed;
+  
+  if((keys["ArrowUp"] || keys[" "] || touchState.jump) && player.onGround){
+    player.vy = -player.jump; 
+    player.onGround = false;
   }
-  if(keys["Shift"]&&!timeStop&&cooldown===0){
-    timeStop=true; timeLeft=STOP_MAX;
+  
+  if((keys["Shift"] || touchState.shift) && !timeStop && cooldown===0){
+    timeStop = true; 
+    timeLeft = STOP_MAX;
   }
 
   player.vy+=gravity;
@@ -388,77 +445,52 @@ function update(){
 
   if(!timeStop){
     lasers.forEach(l=>{
+      if(l.rotateSpeed !== undefined){
+        l.angle += l.rotateSpeed;
+      }
+      if(l.vy !== undefined){
+        l.y += l.vy;
+        const minY = (l.minY !== undefined) ? l.minY : 120;
+        const maxY = (l.maxY !== undefined) ? l.maxY : 320;
+        if(l.y < minY || l.y + l.h > maxY){ l.vy *= -1; }
+      }
+      if(l.vx !== undefined){
+        l.x += l.vx;
+        const minX = (l.minX !== undefined) ? l.minX : 0;
+        const maxX = (l.maxX !== undefined) ? l.maxX : 800;
+        if(l.x < minX || l.x + l.w > maxX){ l.vx *= -1; }
+      }
+    });
 
-if(l.rotateSpeed !== undefined){	//그거
-  l.angle += l.rotateSpeed;
-}
+    platforms.forEach(p=>{
+      if(p.vy !== undefined){
+        p.y += p.vy;
+        const min = (p.minY !== undefined) ? p.minY : 0;
+        const max = (p.maxY !== undefined) ? p.maxY : 450;
+        if(p.y < min || p.y + p.h > max){ p.vy *= -1; }
+      }
+    });
+  }
 
-  // Y축 이동
-  if(l.vy !== undefined){
-    l.y += l.vy;
-
-    const minY = (l.minY !== undefined) ? l.minY : 120;
-    const maxY = (l.maxY !== undefined) ? l.maxY : 320;
-
-    if(l.y < minY || l.y + l.h > maxY){
-      l.vy *= -1;
+  lasers.forEach(l=>{
+    let collided = false;
+    if(l.angle !== undefined){
+      collided = hitRotatedRect(player, l);
+    } else {
+      collided = hit(player, l);
     }
-  }
-
-  // X축 이동
-  if(l.vx !== undefined){
-    l.x += l.vx;
-
-    const minX = (l.minX !== undefined) ? l.minX : 0;
-    const maxX = (l.maxX !== undefined) ? l.maxX : 800;
-
-    if(l.x < minX || l.x + l.w > maxX){
-      l.vx *= -1;
+    if(collided){
+      deaths++;
+      loadStage(stageIndex);
     }
-  }
+  });
 
-});	//레이저 범위
-platforms.forEach(p=>{
-
-  if(p.vy !== undefined){
-
-    p.y += p.vy;
-
-    const min = (p.minY !== undefined) ? p.minY : 0;
-    const max = (p.maxY !== undefined) ? p.maxY : 450;
-
-    if(p.y < min || p.y + p.h > max){
-      p.vy *= -1;
+  lava.forEach(l=>{
+    if(hitCircle(player,l)){
+      deaths++;
+      loadStage(stageIndex);
     }
-
-  }
-
-});	//플랫폼 범위
-  }
-
-lasers.forEach(l=>{	//그거
-
-  let collided = false;
-
-  if(l.angle !== undefined){
-    collided = hitRotatedRect(player, l);
-  } else {
-    collided = hit(player, l);
-  }
-
-  if(collided){
-    deaths++;
-    loadStage(stageIndex);
-  }
-
-});
-
-lava.forEach(l=>{
-  if(hitCircle(player,l)){
-    deaths++;
-    loadStage(stageIndex);
-  }
-});
+  });
 
   if(hit(player,goal)){
     stageIndex++;
@@ -466,168 +498,163 @@ lava.forEach(l=>{
       gameMode="menu";
     } else loadStage(stageIndex);
   }
-if(!timeStop){
-  sawAngle += 0.15;	//톱니 회전
-}}
+
+  if(!timeStop){
+    sawAngle += 0.15;
+  }
+}
 
 /* ================= 그리기 ================= */
 function draw(){
   ctx.fillStyle="#222";
-  ctx.fillRect(0,0,800,450);
+  ctx.fillRect(0,0,800,550);
 
-if(gameMode==="menu"){
-  ctx.fillStyle="#fff";
-  ctx.font="28px sans-serif";
-  ctx.fillText("TIME STOP PUZZLE",270,150);
-
-  ctx.font="18px sans-serif";
-  ctx.fillText("Stage Select",350,200);
-
-  ctx.font="16px sans-serif";
-
-  stageButtons.forEach(b=>{
-    ctx.fillStyle="#333";
-    ctx.fillRect(b.x,b.y,b.w,b.h);
-
-    ctx.strokeStyle="#aaa";
-    ctx.strokeRect(b.x,b.y,b.w,b.h);
-
+  if(gameMode==="menu"){
     ctx.fillStyle="#fff";
-    ctx.fillText("Stage "+(b.stage+1), b.x+60, b.y+18);
-  });
+    ctx.font="28px sans-serif";
+    ctx.fillText("TIME STOP PUZZLE",270,150);
 
-  return;
-}
+    ctx.font="18px sans-serif";
+    ctx.fillText("Stage Select",350,200);
 
-
-
-ctx.fillStyle="#ff3300";
-lava.forEach(l=>{
-
-  const cx = l.x + l.w/2;
-  const cy = l.y + l.h/2;
-  const r = Math.min(l.w,l.h)/2;
-
-  ctx.save();
-  ctx.translate(cx,cy);
-  ctx.rotate(sawAngle);
-
-  ctx.fillStyle="#ff3333";
-
-  const teeth = 12;
-
-  ctx.beginPath();
-
-  for(let i=0;i<teeth*2;i++){
-    const angle = i*Math.PI/teeth;
-    const radius = (i%2===0)? r : r*0.7;
-
-    const x = Math.cos(angle)*radius;
-    const y = Math.sin(angle)*radius;
-
-    if(i===0) ctx.moveTo(x,y);
-    else ctx.lineTo(x,y);
+    ctx.font="16px sans-serif";
+    stageButtons.forEach(b=>{
+      ctx.fillStyle="#333";
+      ctx.fillRect(b.x,b.y,b.w,b.h);
+      ctx.strokeStyle="#aaa";
+      ctx.strokeRect(b.x,b.y,b.w,b.h);
+      ctx.fillStyle="#fff";
+      ctx.fillText("Stage "+(b.stage+1), b.x+60, b.y+18);
+    });
+    return;
   }
 
-  ctx.closePath();
-  ctx.fill();
+  // 장애물(톱니바퀴/용암)
+  lava.forEach(l=>{
+    const cx = l.x + l.w/2;
+    const cy = l.y + l.h/2;
+    const r = Math.min(l.w,l.h)/2;
 
-  ctx.restore();
+    ctx.save();
+    ctx.translate(cx,cy);
+    ctx.rotate(sawAngle);
 
-});
+    ctx.fillStyle="#ff3333";
+    const teeth = 12;
+    ctx.beginPath();
+    for(let i=0;i<teeth*2;i++){
+      const angle = i*Math.PI/teeth;
+      const radius = (i%2===0)? r : r*0.7;
+      const x = Math.cos(angle)*radius;
+      const y = Math.sin(angle)*radius;
+      if(i===0) ctx.moveTo(x,y);
+      else ctx.lineTo(x,y);
+    }
+    ctx.closePath();
+    ctx.fill();
+    ctx.restore();
+  });
 
+  // 게임 진행 영역 구분선 및 배경
   ctx.fillStyle="#555";
-  ctx.fillRect(0,groundY,800,4);	//바닥
+  ctx.fillRect(0,groundY,800,4); // 기존 바닥선
 
-ctx.fillStyle="#222";
-ctx.fillRect(0,groundY+4,800,450-groundY);	//바닥 채색
+  ctx.fillStyle="#1a1a1a";
+  ctx.fillRect(0,groundY+4,800,450-(groundY+4)); // 기존 바닥 채색
 
+  // 발판
   ctx.fillStyle="#888";
   platforms.forEach(p=>ctx.fillRect(p.x,p.y,p.w,p.h));
 
-lasers.forEach(l=>{	//그거
+  // 레이저
+  lasers.forEach(l=>{
+    const cx = l.x + l.w/2;
+    const cy = l.y + l.h/2;
+    ctx.save();
+    ctx.translate(cx, cy);
+    ctx.rotate(l.angle || 0);
+    ctx.fillStyle="#ff4d4d";
+    ctx.fillRect(-l.w/2, -l.h/2, l.w, l.h);
+    ctx.restore();
+  });
 
-  const cx = l.x + l.w/2;
-  const cy = l.y + l.h/2;
-
-  ctx.save();
-  ctx.translate(cx, cy);
-  ctx.rotate(l.angle || 0);
-
-  ctx.fillStyle="#ff4d4d";
-  ctx.fillRect(-l.w/2, -l.h/2, l.w, l.h);
-
-  ctx.restore();
-
-});
-
+  // 플레이어 & 도착점
   ctx.fillStyle="#4da6ff";
   ctx.fillRect(player.x,player.y,player.w,player.h);
 
   ctx.fillStyle="#4dff88";
   ctx.fillRect(goal.x,goal.y,goal.w,goal.h);
 
-// ===== UI 흐림 처리 =====
-let uiAlpha = 1;
+  // ===== UI 투명도 처리 =====
+  let uiAlpha = 1;
+  const uiArea = { x: 0, y: 0, w: 220, h: 100 };
+  if(player.x < uiArea.x + uiArea.w &&
+     player.x + player.w > uiArea.x &&
+     player.y < uiArea.y + uiArea.h &&
+     player.y + player.h > uiArea.y){
+    uiAlpha = 0.3;
+  }
 
-const uiArea = {
-  x: 0,
-  y: 0,
-  w: 220,
-  h: 100
-};
+  ctx.save();
+  ctx.globalAlpha = uiAlpha;
 
-if(
-  player.x < uiArea.x + uiArea.w &&
-  player.x + player.w > uiArea.x &&
-  player.y < uiArea.y + uiArea.h &&
-  player.y + player.h > uiArea.y
-){
-  uiAlpha = 0.3;
-}
-
-ctx.save();
-ctx.globalAlpha = uiAlpha;
-
-  ctx.fillStyle="#fff";	//스테이지 UI
+  ctx.fillStyle="#fff";
   ctx.font="14px sans-serif";
   ctx.fillText(stages[stageIndex].name,20,20);
   ctx.fillText("Deaths: "+deaths,20,40);
   ctx.fillText("TimeStop: "+(timeStop?timeLeft:cooldown),20,60);
-/* ================= 타임스탑 UI ================= */
 
-const barX = 20;
-const barY = 80;
-const barW = 200;
-const barH = 14;
+  /* 타임스탑 게이지 UI */
+  const barX = 20, barY = 80, barW = 200, barH = 14;
+  ctx.strokeStyle="#fff";
+  ctx.strokeRect(barX,barY,barW,barH);
 
-ctx.strokeStyle="#fff";
-ctx.strokeRect(barX,barY,barW,barH);
+  let ratio = timeStop ? (timeLeft / STOP_MAX) : (1 - cooldown / COOL_MAX);
+  ctx.fillStyle = timeStop ? "#66ccff" : "#ffaa33";
+  ctx.fillRect(barX,barY,barW*ratio,barH);
 
-let ratio;
+  ctx.fillStyle="#fff";
+  ctx.font="12px sans-serif";
+  ctx.fillText("Time Stop", barX, barY-5);
+  ctx.restore();
 
-if(timeStop){
-  ratio = timeLeft / STOP_MAX;
-  ctx.fillStyle="#66ccff"; // 사용중
-}else{
-  ratio = 1 - (cooldown / COOL_MAX);
-  ctx.fillStyle="#ffaa33"; // 충전중
+  /* 시간 정지 효과 */
+  if(timeStop){
+    ctx.fillStyle="rgba(200,200,200,0.2)";
+    ctx.fillRect(0,0,800,450);
+  }
+
+  /* ================= 모바일 터치 컨트롤러 영역 ================= */
+  // 컨트롤러 패널 배경
+  ctx.fillStyle = "#111";
+  ctx.fillRect(0, 450, 800, 100);
+  ctx.strokeStyle = "#444";
+  ctx.lineWidth = 2;
+  ctx.beginPath();
+  ctx.moveTo(0, 450);
+  ctx.lineTo(800, 450);
+  ctx.stroke();
+
+  // 각 가상 버튼 그리기
+  for (const key in buttons) {
+    const b = buttons[key];
+    const isPressed = touchState[key];
+
+    ctx.fillStyle = isPressed ? "#555" : "#333";
+    ctx.fillRect(b.x, b.y, b.w, b.h);
+
+    ctx.strokeStyle = isPressed ? "#fff" : "#888";
+    ctx.lineWidth = 2;
+    ctx.strokeRect(b.x, b.y, b.w, b.h);
+
+    ctx.fillStyle = isPressed ? "#fff" : "#ccc";
+    ctx.font = "bold 16px sans-serif";
+    ctx.textAlign = "center";
+    ctx.textBaseline = "middle";
+    ctx.fillText(b.label, b.x + b.w / 2, b.y + b.h / 2);
+  }
+  ctx.textAlign = "left"; // 텍스트 얼라인 복구
 }
-
-ctx.fillRect(barX,barY,barW*ratio,barH);
-
-ctx.fillStyle="#fff";
-ctx.font="12px sans-serif";
-ctx.fillText("Time Stop", barX, barY-5);
-ctx.restore();
-/* ================= 시간 정지 화면 효과 ================= */
-
-if(timeStop){
-  ctx.fillStyle="rgba(200,200,200,0.2)";
-  ctx.fillRect(0,0,800,450);
-}
-}
-
 
 /* ================= 루프 ================= */
 function loop(){
