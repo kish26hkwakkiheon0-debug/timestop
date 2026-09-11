@@ -138,6 +138,10 @@ function isMobileLandscape() {
    터치 입력
    ===================================================== */
 
+/* =====================================================
+   모바일 터치 / 포인터 입력
+   ===================================================== */
+
 const touchState = {
   left: false,
   right: false,
@@ -147,55 +151,95 @@ const touchState = {
 
 
 /*
-  버튼은 기존 게임 좌표계(800×550)를 기준으로 한다.
-
-  모바일 가로에서도 캔버스 전체가 화면에 맞게
-  확대/축소되므로 입력 좌표를 800×550 좌표로
-  변환하면 정확하게 작동한다.
+  게임 내부 좌표 기준 버튼.
+  캔버스가 모바일 화면에 확대/축소되어도
+  이 좌표는 항상 800×550 기준으로 유지된다.
 */
-
 const buttons = {
-  left:  { x: 20,  y: 465, w: 70, h: 70, label: "◀" },
-  right: { x: 105, y: 465, w: 70, h: 70, label: "▶" },
-  jump:  { x: 610, y: 465, w: 80, h: 70, label: "JUMP" },
-  shift: { x: 700, y: 465, w: 80, h: 70, label: "STOP" }
+  left:  {
+    x: 20,
+    y: 465,
+    w: 70,
+    h: 70,
+    label: "◀"
+  },
+
+  right: {
+    x: 105,
+    y: 465,
+    w: 70,
+    h: 70,
+    label: "▶"
+  },
+
+  jump: {
+    x: 610,
+    y: 465,
+    w: 80,
+    h: 70,
+    label: "JUMP"
+  },
+
+  shift: {
+    x: 700,
+    y: 465,
+    w: 80,
+    h: 70,
+    label: "STOP"
+  }
 };
 
 
-function updateTouchState(e) {
+/*
+  현재 화면에서 누르고 있는 포인터들.
+  여러 손가락을 동시에 사용할 수 있다.
+*/
+const activePointers = new Map();
 
-  e.preventDefault();
+
+/*
+  실제 화면의 터치 위치를
+  게임 내부 800×550 좌표로 변환
+*/
+function getGamePointerPosition(e) {
+
+  const rect = canvas.getBoundingClientRect();
+
+  const scaleX = canvas.width / rect.width;
+  const scaleY = canvas.height / rect.height;
+
+  return {
+    x: (e.clientX - rect.left) * scaleX,
+    y: (e.clientY - rect.top) * scaleY
+  };
+}
+
+
+/*
+  모든 현재 포인터를 검사해서
+  버튼 상태를 다시 계산한다.
+*/
+function updateTouchButtons() {
 
   touchState.left = false;
   touchState.right = false;
   touchState.jump = false;
   touchState.shift = false;
 
-  const rect = canvas.getBoundingClientRect();
 
-  /*
-    실제 화면 좌표 → 게임 내부 800×550 좌표
-  */
-  const scaleX = canvas.width / rect.width;
-  const scaleY = canvas.height / rect.height;
-
-  for (let i = 0; i < e.touches.length; i++) {
-
-    const touch = e.touches[i];
-
-    const tx = (touch.clientX - rect.left) * scaleX;
-    const ty = (touch.clientY - rect.top) * scaleY;
+  for (const pointer of activePointers.values()) {
 
     for (const key in buttons) {
 
       const b = buttons[key];
 
       if (
-        tx >= b.x &&
-        tx <= b.x + b.w &&
-        ty >= b.y &&
-        ty <= b.y + b.h
+        pointer.x >= b.x &&
+        pointer.x <= b.x + b.w &&
+        pointer.y >= b.y &&
+        pointer.y <= b.y + b.h
       ) {
+
         touchState[key] = true;
       }
     }
@@ -203,21 +247,145 @@ function updateTouchState(e) {
 }
 
 
-canvas.addEventListener("touchstart", updateTouchState, {
-  passive: false
+/*
+  손가락을 누름
+*/
+canvas.addEventListener("pointerdown", e => {
+
+  /*
+    터치/펜/마우스 모두 처리하지만
+    PC에서는 기존 키보드 조작을 그대로 사용한다.
+  */
+  if (e.pointerType === "touch") {
+
+    e.preventDefault();
+
+    const pos = getGamePointerPosition(e);
+
+    activePointers.set(
+      e.pointerId,
+      pos
+    );
+
+    updateTouchButtons();
+  }
+
+}, { passive: false });
+
+
+/*
+  손가락을 움직임
+*/
+canvas.addEventListener("pointermove", e => {
+
+  if (e.pointerType === "touch") {
+
+    e.preventDefault();
+
+    /*
+      해당 손가락이 이미 눌려 있을 때만 갱신
+    */
+    if (activePointers.has(e.pointerId)) {
+
+      const pos = getGamePointerPosition(e);
+
+      activePointers.set(
+        e.pointerId,
+        pos
+      );
+
+      updateTouchButtons();
+    }
+  }
+
+}, { passive: false });
+
+
+/*
+  손가락을 뗌
+*/
+canvas.addEventListener("pointerup", e => {
+
+  if (e.pointerType === "touch") {
+
+    e.preventDefault();
+
+    activePointers.delete(
+      e.pointerId
+    );
+
+    updateTouchButtons();
+  }
+
+}, { passive: false });
+
+
+/*
+  터치가 취소되는 경우
+*/
+canvas.addEventListener("pointercancel", e => {
+
+  if (e.pointerType === "touch") {
+
+    e.preventDefault();
+
+    activePointers.delete(
+      e.pointerId
+    );
+
+    updateTouchButtons();
+  }
+
+}, { passive: false });
+
+
+/*
+  손가락이 캔버스 밖으로 나간 경우에도
+  버튼이 계속 눌린 상태로 남지 않게 한다.
+*/
+canvas.addEventListener("pointerleave", e => {
+
+  if (e.pointerType === "touch") {
+
+    /*
+      pointerleave만으로 바로 삭제하지 않는다.
+      브라우저에 따라 이동 중에도 발생할 수 있기 때문.
+    */
+
+    if (activePointers.has(e.pointerId)) {
+
+      const pos = getGamePointerPosition(e);
+
+      activePointers.set(
+        e.pointerId,
+        pos
+      );
+
+      updateTouchButtons();
+    }
+  }
+
+}, { passive: false });
+
+
+/*
+  브라우저에서 포인터 캡처가 끊겼을 경우
+*/
+canvas.addEventListener("lostpointercapture", e => {
+
+  activePointers.delete(
+    e.pointerId
+  );
+
+  updateTouchButtons();
 });
 
-canvas.addEventListener("touchmove", updateTouchState, {
-  passive: false
-});
 
-canvas.addEventListener("touchend", updateTouchState, {
-  passive: false
-});
-
-canvas.addEventListener("touchcancel", updateTouchState, {
-  passive: false
-});
+/*
+  화면을 터치했을 때 브라우저의
+  기본 스크롤/줌 동작을 막는다.
+*/
+canvas.style.touchAction = "none";
 
 
 /* =====================================================
@@ -2256,24 +2424,6 @@ loop();
    화면 회전/크기 변경 대응
    ===================================================== */
 
-addEventListener(
-  "resize",
-  () => {
-
-    /*
-      CSS가 자동으로 캔버스를
-      현재 모바일 방향에 맞춰 조절한다.
-
-      게임 내부 좌표는 800×550 그대로라서
-      스테이지 자체는 변하지 않는다.
-    */
-
-    updateTouchState({
-      preventDefault: () => {},
-      touches: []
-    });
-  }
-);
 
 </script>
 
