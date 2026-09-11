@@ -2,8 +2,15 @@
 <html lang="ko">
 <head>
 <meta charset="UTF-8">
-<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+<meta name="viewport"
+      content="width=device-width,
+               initial-scale=1.0,
+               maximum-scale=1.0,
+               user-scalable=no,
+               viewport-fit=cover">
+
 <title>Time Stop Puzzle</title>
+
 <style>
 * {
   box-sizing: border-box;
@@ -11,43 +18,126 @@
   -webkit-user-select: none;
   user-select: none;
 }
+
+html,
 body {
   margin: 0;
+  width: 100%;
+  height: 100%;
+  overflow: hidden;
   background: #111;
+}
+
+body {
   display: flex;
   justify-content: center;
   align-items: center;
-  height: 100vh;
-  overflow: hidden;
 }
+
 canvas {
   background: #222;
   border: 2px solid #555;
+  touch-action: none;
+
+  /* PC는 기존 800 × 550 유지 */
+  width: 800px;
+  height: 550px;
+
   max-width: 100%;
   max-height: 100vh;
-  object-fit: contain;
-  touch-action: none;
+
+  display: block;
+}
+
+
+/* =====================================================
+   모바일 세로
+   ===================================================== */
+
+@media (max-width: 1000px) and (orientation: portrait) {
+  canvas {
+    width: 100vw;
+    height: auto;
+
+    max-width: 100vw;
+    max-height: 100vh;
+  }
+}
+
+
+/* =====================================================
+   모바일 가로
+   ===================================================== */
+
+@media (max-width: 1000px) and (orientation: landscape) {
+
+  body {
+    width: 100vw;
+    height: 100vh;
+    display: block;
+  }
+
+  canvas {
+    /*
+      모바일 가로에서는 화면 전체를 사용.
+      기존 800×550 좌표계를 화면에 맞춰
+      자동으로 확대/축소한다.
+    */
+    width: 100vw;
+    height: 100vh;
+
+    max-width: none;
+    max-height: none;
+
+    border: 0;
+    display: block;
+  }
 }
 </style>
 </head>
+
 <body>
 
 <canvas id="game" width="800" height="550"></canvas>
 
 <script>
-/* ================= 기본 ================= */
+
+/* =====================================================
+   기본
+   ===================================================== */
+
 const canvas = document.getElementById("game");
 const ctx = canvas.getContext("2d");
 
 const keys = {};
-addEventListener("keydown", e => keys[e.key] = true);
-addEventListener("keyup", e => keys[e.key] = false);
 
-let gameMode = "menu"; // menu | play
+addEventListener("keydown", e => {
+  keys[e.key] = true;
+});
+
+addEventListener("keyup", e => {
+  keys[e.key] = false;
+});
+
+
+let gameMode = "menu";
 let stageIndex = 0;
 let deaths = 0;
 
-/* ================= 터치 입력 관리 ================= */
+
+/* =====================================================
+   모바일 여부
+   ===================================================== */
+
+function isMobileLandscape() {
+  return window.matchMedia("(max-width: 1000px) and (orientation: landscape)").matches;
+}
+
+
+/* =====================================================
+   터치 입력
+   ===================================================== */
+
 const touchState = {
   left: false,
   right: false,
@@ -55,7 +145,15 @@ const touchState = {
   shift: false
 };
 
-// 모바일 버튼 정의 (화면 하단 영역: y = 450 ~ 550)
+
+/*
+  버튼은 기존 게임 좌표계(800×550)를 기준으로 한다.
+
+  모바일 가로에서도 캔버스 전체가 화면에 맞게
+  확대/축소되므로 입력 좌표를 800×550 좌표로
+  변환하면 정확하게 작동한다.
+*/
+
 const buttons = {
   left:  { x: 20,  y: 465, w: 70, h: 70, label: "◀" },
   right: { x: 105, y: 465, w: 70, h: 70, label: "▶" },
@@ -63,606 +161,2121 @@ const buttons = {
   shift: { x: 700, y: 465, w: 80, h: 70, label: "STOP" }
 };
 
-function handleTouches(e) {
-  if (e.type !== 'touchstart' && e.type !== 'touchmove' && e.type !== 'touchend' && e.type !== 'touchcancel') return;
-  
-  // 터치 상태 초기화
+
+function updateTouchState(e) {
+
+  e.preventDefault();
+
   touchState.left = false;
   touchState.right = false;
   touchState.jump = false;
   touchState.shift = false;
 
   const rect = canvas.getBoundingClientRect();
+
+  /*
+    실제 화면 좌표 → 게임 내부 800×550 좌표
+  */
   const scaleX = canvas.width / rect.width;
   const scaleY = canvas.height / rect.height;
 
   for (let i = 0; i < e.touches.length; i++) {
+
     const touch = e.touches[i];
+
     const tx = (touch.clientX - rect.left) * scaleX;
     const ty = (touch.clientY - rect.top) * scaleY;
 
-    // 각 버튼별 범위 체크
     for (const key in buttons) {
+
       const b = buttons[key];
-      if (tx >= b.x && tx <= b.x + b.w && ty >= b.y && ty <= b.y + b.h) {
+
+      if (
+        tx >= b.x &&
+        tx <= b.x + b.w &&
+        ty >= b.y &&
+        ty <= b.y + b.h
+      ) {
         touchState[key] = true;
       }
     }
   }
 }
 
-canvas.addEventListener("touchstart", handleTouches, { passive: false });
-canvas.addEventListener("touchmove", handleTouches, { passive: false });
-canvas.addEventListener("touchend", handleTouches, { passive: false });
-canvas.addEventListener("touchcancel", handleTouches, { passive: false });
 
-/* ================= 플레이어 ================= */
+canvas.addEventListener("touchstart", updateTouchState, {
+  passive: false
+});
+
+canvas.addEventListener("touchmove", updateTouchState, {
+  passive: false
+});
+
+canvas.addEventListener("touchend", updateTouchState, {
+  passive: false
+});
+
+canvas.addEventListener("touchcancel", updateTouchState, {
+  passive: false
+});
+
+
+/* =====================================================
+   플레이어
+   ===================================================== */
+
 const player = {
-  x: 50, y: 350, w: 32, h: 32,
-  vx: 0, vy: 0,
+  x: 50,
+  y: 350,
+  w: 32,
+  h: 32,
+
+  vx: 0,
+  vy: 0,
+
   speed: 4,
   jump: 12,
+
   onGround: false
 };
+
 
 const gravity = 0.6;
 const groundY = 382;
 
-/* ================= 시간 정지 ================= */
+
+/* =====================================================
+   시간 정지
+   ===================================================== */
+
 let timeStop = false;
 let timeLeft = 0;
 let cooldown = 0;
+
 const STOP_MAX = 120;
 const COOL_MAX = 240;
 
-/* ================= 스테이지 데이터 ================= */
+
+/* =====================================================
+   스테이지
+   ===================================================== */
+
 const stages = [
-  { name:"Stage 1",
-    lasers:[{x:400,y:200,w:10,h:80,vy:2,minY:130,maxY:380}],
+
+  {
+    name:"Stage 1",
+
+    lasers:[
+      {
+        x:400,
+        y:200,
+        w:10,
+        h:80,
+        vy:2,
+        minY:130,
+        maxY:380
+      }
+    ],
+
     platforms:[],
-    goal:{x:670,y:350,w:30,h:30}
+
+    goal:{
+      x:670,
+      y:350,
+      w:30,
+      h:30
+    }
   },
-  { name:"Stage 2",
-    lasers:[{x:500,y:150,w:10,h:80,vy:2,minY:100,maxY:330}],
-    platforms:[{x:450,y:280,w:120,h:12}],
-    lava:[{x:450,y:330,w:120,h:120}],
-    goal:{x:650,y:200,w:30,h:30}
-  },
-  { name:"Stage 3",
+
+
+  {
+    name:"Stage 2",
+
     lasers:[
-      {x:300,y:180,w:10,h:80,vy:3,minY:100,maxY:330},
-      {x:550,y:220,w:10,h:80,vy:-3,minY:100,maxY:330}
+      {
+        x:500,
+        y:150,
+        w:10,
+        h:80,
+        vy:2,
+        minY:100,
+        maxY:330
+      }
     ],
+
     platforms:[
-      {x:320,y:300,w:120,h:12},
-      {x:520,y:250,w:120,h:12}
+      {
+        x:450,
+        y:280,
+        w:120,
+        h:12
+      }
     ],
+
     lava:[
-      {x:320,y:330,w:120,h:120},
-      {x:520,y:330,w:120,h:120}
+      {
+        x:450,
+        y:330,
+        w:120,
+        h:120
+      }
     ],
-    goal:{x:740,y:180,w:30,h:30}
+
+    goal:{
+      x:650,
+      y:200,
+      w:30,
+      h:30
+    }
   },
-  { name:"Stage 4",
+
+
+  {
+    name:"Stage 3",
+
     lasers:[
-      {x:250,y:200,w:10,h:100,vy:3,minY:100,maxY:380},
-      {x:400,y:150,w:10,h:100,vy:-3,minY:100,maxY:330},
-      {x:550,y:220,w:10,h:100,vy:3,minY:100,maxY:380}
+      {
+        x:300,
+        y:180,
+        w:10,
+        h:80,
+        vy:3,
+        minY:100,
+        maxY:330
+      },
+
+      {
+        x:550,
+        y:220,
+        w:10,
+        h:80,
+        vy:-3,
+        minY:100,
+        maxY:330
+      }
     ],
-    platforms:[{x:350,y:300,w:120,h:12}],
-    lava:[
-      {x:350,y:330,w:120,h:120},
-      {x:710,y:330,w:100,h:100}
-    ],
-    goal:{x:740,y:260,w:30,h:30}
-  },
-  { name:"Stage 5",
-    lasers:[
-      {x:300,y:180,w:10,h:120,vy:2,minY:90,maxY:330},
-      {x:600,y:180,w:10,h:120,vy:-2,minY:100,maxY:390}
-    ],
+
     platforms:[
-      {x:260,y:300,w:100,h:12},
-      {x:500,y:260,w:100,h:12}
+      {
+        x:320,
+        y:300,
+        w:120,
+        h:12
+      },
+
+      {
+        x:520,
+        y:250,
+        w:120,
+        h:12
+      }
     ],
+
     lava:[
-      {x:260,y:330,w:120,h:120},
-      {x:380,y:330,w:120,h:120},
-      {x:500,y:330,w:120,h:120}
+      {
+        x:320,
+        y:330,
+        w:120,
+        h:120
+      },
+
+      {
+        x:520,
+        y:330,
+        w:120,
+        h:120
+      }
     ],
-    goal:{x:740,y:220,w:30,h:30}
+
+    goal:{
+      x:740,
+      y:180,
+      w:30,
+      h:30
+    }
   },
-  { name:"Stage 6",
+
+
+  {
+    name:"Stage 4",
+
     lasers:[
-      {x:350,y:180,w:10,h:140,vy:4,minY:80,maxY:400},
-      {x:520,y:160,w:10,h:140,vy:-4,minY:80,maxY:430}
+      {
+        x:250,
+        y:200,
+        w:10,
+        h:100,
+        vy:3,
+        minY:100,
+        maxY:380
+      },
+
+      {
+        x:400,
+        y:150,
+        w:10,
+        h:100,
+        vy:-3,
+        minY:100,
+        maxY:330
+      },
+
+      {
+        x:550,
+        y:220,
+        w:10,
+        h:100,
+        vy:3,
+        minY:100,
+        maxY:380
+      }
     ],
+
     platforms:[
-      {x:300,y:310,w:100,h:12},
-      {x:520,y:240,w:100,h:12}
+      {
+        x:350,
+        y:300,
+        w:120,
+        h:12
+      }
     ],
+
     lava:[
-      {x:280,y:330,w:120,h:120},
-      {x:400,y:330,w:120,h:120},
-      {x:520,y:330,w:120,h:120}
+      {
+        x:350,
+        y:330,
+        w:120,
+        h:120
+      },
+
+      {
+        x:710,
+        y:330,
+        w:100,
+        h:100
+      }
     ],
-    goal:{x:740,y:170,w:30,h:30}
+
+    goal:{
+      x:740,
+      y:260,
+      w:30,
+      h:30
+    }
   },
-  { name:"Stage 7",
+
+
+  {
+    name:"Stage 5",
+
     lasers:[
-      {x:260,y:300,w:10,h:80,vy:4,minY:100,maxY:380},
-      {x:460,y:300,w:10,h:80,vy:-4,minY:100,maxY:380},
-      {x:320,y:150,w:10,h:80,vy:4,minY:100,maxY:380},
-      {x:540,y:150,w:10,h:80,vy:-4,minY:100,maxY:380}
+      {
+        x:300,
+        y:180,
+        w:10,
+        h:120,
+        vy:2,
+        minY:90,
+        maxY:330
+      },
+
+      {
+        x:600,
+        y:180,
+        w:10,
+        h:120,
+        vy:-2,
+        minY:100,
+        maxY:390
+      }
     ],
+
     platforms:[
-      {x:580,y:320,w:90,h:12},
-      {x:680,y:250,w:90,h:12},
-      {x:580,y:200,w:80,h:12},
-      {x:0,y:180,w:450,h:12}
+      {
+        x:260,
+        y:300,
+        w:100,
+        h:12
+      },
+
+      {
+        x:500,
+        y:260,
+        w:100,
+        h:12
+      }
     ],
+
     lava:[
-      {x:680,y:330,w:120,h:120},
-      {x:190,y:135,w:100,h:100},
-      {x:90,y:350,w:80,h:80}
+      {
+        x:260,
+        y:330,
+        w:120,
+        h:120
+      },
+
+      {
+        x:380,
+        y:330,
+        w:120,
+        h:120
+      },
+
+      {
+        x:500,
+        y:330,
+        w:120,
+        h:120
+      }
     ],
-    goal:{x:20,y:130,w:30,h:30}
+
+    goal:{
+      x:740,
+      y:220,
+      w:30,
+      h:30
+    }
   },
-  { name:"Stage 8",
+
+
+  {
+    name:"Stage 6",
+
     lasers:[
-      {x:200,y:-17,w:10,h:270,vy:0},
-      {x:430,y:30,w:10,h:80,vy:3,minY:-20,maxY:230},
-      {x:320,y:30,w:10,h:80,vy:3,minY:-20,maxY:230},
-      {x:540,y:30,w:10,h:80,vy:3,minY:-20,maxY:230},
-      {x:625,y:30,w:150,h:10,vy:3,minY:-20,maxY:230}
+      {
+        x:350,
+        y:180,
+        w:10,
+        h:140,
+        vy:4,
+        minY:80,
+        maxY:400
+      },
+
+      {
+        x:520,
+        y:160,
+        w:10,
+        h:140,
+        vy:-4,
+        minY:80,
+        maxY:430
+      }
     ],
+
     platforms:[
-      {x:90,y:300,w:90,h:12},
-      {x:680,y:300,w:90,h:12},
-      {x:210,y:240,w:600,h:12} 
+      {
+        x:300,
+        y:310,
+        w:100,
+        h:12
+      },
+
+      {
+        x:520,
+        y:240,
+        w:100,
+        h:12
+      }
     ],
+
     lava:[
-      {x:710,y:330,w:120,h:120},
-      {x:760,y:130,w:120,h:120},
-      {x:600,y:330,w:120,h:120},
-      {x:330,y:200,w:100,h:100}
+      {
+        x:280,
+        y:330,
+        w:120,
+        h:120
+      },
+
+      {
+        x:400,
+        y:330,
+        w:120,
+        h:120
+      },
+
+      {
+        x:520,
+        y:330,
+        w:120,
+        h:120
+      }
     ],
-    goal:{x:220,y:130,w:30,h:30}
+
+    goal:{
+      x:740,
+      y:170,
+      w:30,
+      h:30
+    }
   },
-  { name:"Stage 9",
+
+
+  {
+    name:"Stage 7",
+
     lasers:[
-      {x:0,y:300,w:270,h:10,vy:0},
-      {x:270,y:300,w:150,h:10,vy:2,minY:300,maxY:380},
-      {x:350,y:150,w:10,h:80,vy:3,minY:20,maxY:250}, 
-      {x:170,y:100,w:10,h:80,vy:3,minY:10,maxY:280}, 
-      {x:650,y:183,w:10,h:130,vy:0}, 
-      {x:650,y:120,w:10,h:80,vx:2,minX:650,maxX:800}
+      {
+        x:260,
+        y:300,
+        w:10,
+        h:80,
+        vy:4,
+        minY:100,
+        maxY:380
+      },
+
+      {
+        x:460,
+        y:300,
+        w:10,
+        h:80,
+        vy:-4,
+        minY:100,
+        maxY:380
+      },
+
+      {
+        x:320,
+        y:150,
+        w:10,
+        h:80,
+        vy:4,
+        minY:100,
+        maxY:380
+      },
+
+      {
+        x:540,
+        y:150,
+        w:10,
+        h:80,
+        vy:-4,
+        minY:100,
+        maxY:380
+      }
     ],
+
     platforms:[
-      {x:0,y:290,w:270,h:12},
-      {x:350,y:280,w:100,h:12},
-      {x:0,y:200,w:100,h:12},
-      {x:200,y:150,w:120,h:12},
-      {x:400,y:100,w:120,h:12}, 
-      {x:650,y:300,w:120,h:12}, 
-      {x:750,y:200,w:120,h:12}, 
-      {x:750,y:100,w:120,h:12}
+      {
+        x:580,
+        y:320,
+        w:90,
+        h:12
+      },
+
+      {
+        x:680,
+        y:250,
+        w:90,
+        h:12
+      },
+
+      {
+        x:580,
+        y:200,
+        w:80,
+        h:12
+      },
+
+      {
+        x:0,
+        y:180,
+        w:450,
+        h:12
+      }
     ],
+
     lava:[
-      {x:-47,y:210,w:80,h:80},
-      {x:700,y:330,w:120,h:120}, 
-      {x:580,y:330,w:120,h:120}
+      {
+        x:680,
+        y:330,
+        w:120,
+        h:120
+      },
+
+      {
+        x:190,
+        y:135,
+        w:100,
+        h:100
+      },
+
+      {
+        x:90,
+        y:350,
+        w:80,
+        h:80
+      }
     ],
-    goal:{x:700,y:20,w:30,h:30}
+
+    goal:{
+      x:20,
+      y:130,
+      w:30,
+      h:30
+    }
   },
-  { name:"Stage 10",
+
+
+  {
+    name:"Stage 8",
+
     lasers:[
-      {x:120,y:0,w:10,h:120,vy:3,minY:-200,maxY:260},
-      {x:740,y:60,w:10,h:120,vy:3,minY:20,maxY:330},
-      {x:560,y:60,w:10,h:100,vy:2,minY:20,maxY:250},
-      {x:480,y:32,w:10,h:88},
-      {x:480,y:132,w:10,h:88},
-      {x:75,y:270,w:100,h:10,vy:2,minY:270,maxY:380},
-      {x:0,y:60,w:100,h:10},
-      {x:210,y:-20,w:10,h:250,angle:0,rotateSpeed:0.02},
+      {
+        x:200,
+        y:-17,
+        w:10,
+        h:270,
+        vy:0
+      },
+
+      {
+        x:430,
+        y:30,
+        w:10,
+        h:80,
+        vy:3,
+        minY:-20,
+        maxY:230
+      },
+
+      {
+        x:320,
+        y:30,
+        w:10,
+        h:80,
+        vy:3,
+        minY:-20,
+        maxY:230
+      },
+
+      {
+        x:540,
+        y:30,
+        w:10,
+        h:80,
+        vy:3,
+        minY:-20,
+        maxY:230
+      },
+
+      {
+        x:625,
+        y:30,
+        w:150,
+        h:10,
+        vy:3,
+        minY:-20,
+        maxY:230
+      }
     ],
+
     platforms:[
-      {x:750,y:320,w:120,h:12},
-      {x:750,y:220,w:120,h:12},
-      {x:750,y:120,w:120,h:12},
-      {x:750,y:20,w:120,h:12},
-      {x:750,y:120,w:120,h:12},
-      {x:480,y:320,w:80,h:12},
-      {x:480,y:220,w:80,h:12},
-      {x:480,y:120,w:80,h:12},
-      {x:480,y:20,w:80,h:12},
-      {x:480,y:120,w:80,h:12},
-      {x:250,y:260,w:100,h:12},
-      {x:75,y:260,w:100,h:12},
-      {x:20,y:150,w:100,h:12},
-      {x:150,y:50,w:100,h:12},
+      {
+        x:90,
+        y:300,
+        w:90,
+        h:12
+      },
+
+      {
+        x:680,
+        y:300,
+        w:90,
+        h:12
+      },
+
+      {
+        x:210,
+        y:240,
+        w:600,
+        h:12
+      }
     ],
+
     lava:[
-      {x:750,y:350,w:80,h:80},
-      {x:480,y:240,w:80,h:80},
-      {x:675,y:350,w:80,h:80},
-      {x:320,y:350,w:80,h:80},
+      {
+        x:710,
+        y:330,
+        w:120,
+        h:120
+      },
+
+      {
+        x:760,
+        y:130,
+        w:120,
+        h:120
+      },
+
+      {
+        x:600,
+        y:330,
+        w:120,
+        h:120
+      },
+
+      {
+        x:330,
+        y:200,
+        w:100,
+        h:100
+      }
     ],
-    goal:{x:0,y:20,w:30,h:30}
+
+    goal:{
+      x:220,
+      y:130,
+      w:30,
+      h:30
+    }
+  },
+
+
+  {
+    name:"Stage 9",
+
+    lasers:[
+      {
+        x:0,
+        y:300,
+        w:270,
+        h:10,
+        vy:0
+      },
+
+      {
+        x:270,
+        y:300,
+        w:150,
+        h:10,
+        vy:2,
+        minY:300,
+        maxY:380
+      },
+
+      {
+        x:350,
+        y:150,
+        w:10,
+        h:80,
+        vy:3,
+        minY:20,
+        maxY:250
+      },
+
+      {
+        x:170,
+        y:100,
+        w:10,
+        h:80,
+        vy:3,
+        minY:10,
+        maxY:280
+      },
+
+      {
+        x:650,
+        y:183,
+        w:10,
+        h:130,
+        vy:0
+      },
+
+      {
+        x:650,
+        y:120,
+        w:10,
+        h:80,
+        vx:2,
+        minX:650,
+        maxX:800
+      }
+    ],
+
+    platforms:[
+      {
+        x:0,
+        y:290,
+        w:270,
+        h:12
+      },
+
+      {
+        x:350,
+        y:280,
+        w:100,
+        h:12
+      },
+
+      {
+        x:0,
+        y:200,
+        w:100,
+        h:12
+      },
+
+      {
+        x:200,
+        y:150,
+        w:120,
+        h:12
+      },
+
+      {
+        x:400,
+        y:100,
+        w:120,
+        h:12
+      },
+
+      {
+        x:650,
+        y:300,
+        w:120,
+        h:12
+      },
+
+      {
+        x:750,
+        y:200,
+        w:120,
+        h:12
+      },
+
+      {
+        x:750,
+        y:100,
+        w:120,
+        h:12
+      }
+    ],
+
+    lava:[
+      {
+        x:-47,
+        y:210,
+        w:80,
+        h:80
+      },
+
+      {
+        x:700,
+        y:330,
+        w:120,
+        h:120
+      },
+
+      {
+        x:580,
+        y:330,
+        w:120,
+        h:120
+      }
+    ],
+
+    goal:{
+      x:700,
+      y:20,
+      w:30,
+      h:30
+    }
+  },
+
+
+  {
+    name:"Stage 10",
+
+    lasers:[
+      {
+        x:120,
+        y:0,
+        w:10,
+        h:120,
+        vy:3,
+        minY:-200,
+        maxY:260
+      },
+
+      {
+        x:740,
+        y:60,
+        w:10,
+        h:120,
+        vy:3,
+        minY:20,
+        maxY:330
+      },
+
+      {
+        x:560,
+        y:60,
+        w:10,
+        h:100,
+        vy:2,
+        minY:20,
+        maxY:250
+      },
+
+      {
+        x:480,
+        y:32,
+        w:10,
+        h:88
+      },
+
+      {
+        x:480,
+        y:132,
+        w:10,
+        h:88
+      },
+
+      {
+        x:75,
+        y:270,
+        w:100,
+        h:10,
+        vy:2,
+        minY:270,
+        maxY:380
+      },
+
+      {
+        x:0,
+        y:60,
+        w:100,
+        h:10
+      },
+
+      {
+        x:210,
+        y:-20,
+        w:10,
+        h:250,
+        angle:0,
+        rotateSpeed:0.02
+      }
+    ],
+
+    platforms:[
+      {
+        x:750,
+        y:320,
+        w:120,
+        h:12
+      },
+
+      {
+        x:750,
+        y:220,
+        w:120,
+        h:12
+      },
+
+      {
+        x:750,
+        y:120,
+        w:120,
+        h:12
+      },
+
+      {
+        x:750,
+        y:20,
+        w:120,
+        h:12
+      },
+
+      {
+        x:750,
+        y:120,
+        w:120,
+        h:12
+      },
+
+      {
+        x:480,
+        y:320,
+        w:80,
+        h:12
+      },
+
+      {
+        x:480,
+        y:220,
+        w:80,
+        h:12
+      },
+
+      {
+        x:480,
+        y:120,
+        w:80,
+        h:12
+      },
+
+      {
+        x:480,
+        y:20,
+        w:80,
+        h:12
+      },
+
+      {
+        x:480,
+        y:120,
+        w:80,
+        h:12
+      },
+
+      {
+        x:250,
+        y:260,
+        w:100,
+        h:12
+      },
+
+      {
+        x:75,
+        y:260,
+        w:100,
+        h:12
+      },
+
+      {
+        x:20,
+        y:150,
+        w:100,
+        h:12
+      },
+
+      {
+        x:150,
+        y:50,
+        w:100,
+        h:12
+      }
+    ],
+
+    lava:[
+      {
+        x:750,
+        y:350,
+        w:80,
+        h:80
+      },
+
+      {
+        x:480,
+        y:240,
+        w:80,
+        h:80
+      },
+
+      {
+        x:675,
+        y:350,
+        w:80,
+        h:80
+      },
+
+      {
+        x:320,
+        y:350,
+        w:80,
+        h:80
+      }
+    ],
+
+    goal:{
+      x:0,
+      y:20,
+      w:30,
+      h:30
+    }
   }
 ];
 
-let lasers=[], platforms=[], goal=null, lava=[];
+
+let lasers = [];
+let platforms = [];
+let goal = null;
+let lava = [];
+
 let sawAngle = 0;
 
-/* ================= 유틸 ================= */
-function hit(a,b){
-  return a.x<b.x+b.w && a.x+a.w>b.x &&
-         a.y<b.y+b.h && a.y+a.h>b.y;
+
+/* =====================================================
+   유틸
+   ===================================================== */
+
+function hit(a,b) {
+
+  return (
+    a.x < b.x + b.w &&
+    a.x + a.w > b.x &&
+    a.y < b.y + b.h &&
+    a.y + a.h > b.y
+  );
 }
 
-function hitRotatedRect(player, laser){
-  const cx = laser.x + laser.w/2;
-  const cy = laser.y + laser.h/2;
+
+function hitRotatedRect(player, laser) {
+
+  const cx = laser.x + laser.w / 2;
+  const cy = laser.y + laser.h / 2;
+
   const angle = -(laser.angle || 0);
 
   const points = [
-    {x: player.x, y: player.y},
-    {x: player.x + player.w, y: player.y},
-    {x: player.x, y: player.y + player.h},
-    {x: player.x + player.w, y: player.y + player.h}
+    {x:player.x, y:player.y},
+    {x:player.x + player.w, y:player.y},
+    {x:player.x, y:player.y + player.h},
+    {x:player.x + player.w, y:player.y + player.h}
   ];
 
-  for(let p of points){
+  for (let p of points) {
+
     const dx = p.x - cx;
     const dy = p.y - cy;
-    const rx = dx * Math.cos(angle) - dy * Math.sin(angle);
-    const ry = dx * Math.sin(angle) + dy * Math.cos(angle);
 
-    if(Math.abs(rx) < laser.w/2 && Math.abs(ry) < laser.h/2){
+    const rx =
+      dx * Math.cos(angle) -
+      dy * Math.sin(angle);
+
+    const ry =
+      dx * Math.sin(angle) +
+      dy * Math.cos(angle);
+
+    if (
+      Math.abs(rx) < laser.w / 2 &&
+      Math.abs(ry) < laser.h / 2
+    ) {
       return true;
     }
   }
+
   return false;
 }
 
-function hitCircle(rect, circle){
-  const cx = circle.x + circle.w/2;
-  const cy = circle.y + circle.h/2;
-  const r = circle.w/2;
 
-  const closestX = Math.max(rect.x, Math.min(cx, rect.x + rect.w));
-  const closestY = Math.max(rect.y, Math.min(cy, rect.y + rect.h));
+function hitCircle(rect, circle) {
+
+  const cx = circle.x + circle.w / 2;
+  const cy = circle.y + circle.h / 2;
+
+  const r = circle.w / 2;
+
+  const closestX =
+    Math.max(
+      rect.x,
+      Math.min(cx, rect.x + rect.w)
+    );
+
+  const closestY =
+    Math.max(
+      rect.y,
+      Math.min(cy, rect.y + rect.h)
+    );
 
   const dx = cx - closestX;
   const dy = cy - closestY;
 
-  return dx*dx + dy*dy < r*r;
+  return dx * dx + dy * dy < r * r;
 }
 
-function loadStage(i){
-  const s=stages[i];
-  lasers=s.lasers.map(l=>({...l}));
-  platforms=s.platforms.map(p=>({...p}));
-  lava=(s.lava||[]).map(l=>({...l}));
-  goal={...s.goal};
 
-  player.x=0; player.y=350;
-  player.vx=player.vy=0;
-  timeStop=false; timeLeft=0; cooldown=0;
+/* =====================================================
+   스테이지 로드
+   ===================================================== */
+
+function loadStage(i) {
+
+  const s = stages[i];
+
+  lasers = s.lasers.map(l => ({...l}));
+
+  platforms =
+    s.platforms.map(p => ({...p}));
+
+  lava =
+    (s.lava || []).map(l => ({...l}));
+
+  goal = {...s.goal};
+
+  player.x = 0;
+  player.y = 350;
+
+  player.vx = 0;
+  player.vy = 0;
+
+  player.onGround = false;
+
+  timeStop = false;
+  timeLeft = 0;
+  cooldown = 0;
 }
 
-/* ================= 메뉴 버튼 ================= */
+
+/* =====================================================
+   메뉴
+   ===================================================== */
+
 const stageButtons = [];
 
-function buildMenu(){
+
+function buildMenu() {
+
   stageButtons.length = 0;
+
   const startX = 200;
   const startY = 220;
+
   const colWidth = 220;
   const rowHeight = 35;
+
   const rows = 5;
 
-  for(let i=0;i<stages.length;i++){
+  for (
+    let i = 0;
+    i < stages.length;
+    i++
+  ) {
+
     const col = Math.floor(i / rows);
     const row = i % rows;
 
     stageButtons.push({
       x: startX + col * colWidth,
       y: startY + row * rowHeight,
+
       w: 180,
       h: 28,
+
       stage: i
     });
   }
 }
+
+
 buildMenu();
 
-/* ================= 클릭 / 터치 메뉴 처리 ================= */
+
+/* =====================================================
+   메뉴 클릭
+   ===================================================== */
+
 function handleMenuClick(clientX, clientY) {
+
   if (gameMode !== "menu") return;
-  const rect = canvas.getBoundingClientRect();
-  const mx = (clientX - rect.left) * (canvas.width / rect.width);
-  const my = (clientY - rect.top) * (canvas.height / rect.height);
+
+  const rect =
+    canvas.getBoundingClientRect();
+
+  const mx =
+    (clientX - rect.left) *
+    (canvas.width / rect.width);
+
+  const my =
+    (clientY - rect.top) *
+    (canvas.height / rect.height);
+
 
   stageButtons.forEach(b => {
-    if (mx > b.x && mx < b.x + b.w && my > b.y && my < b.y + b.h) {
+
+    if (
+      mx > b.x &&
+      mx < b.x + b.w &&
+      my > b.y &&
+      my < b.y + b.h
+    ) {
+
       stageIndex = b.stage;
+
       deaths = 0;
+
       loadStage(stageIndex);
+
       gameMode = "play";
     }
   });
 }
 
-canvas.onclick = (e) => handleMenuClick(e.clientX, e.clientY);
 
-/* ================= 업데이트 ================= */
-function update(){
-  if(gameMode!=="play") return;
+canvas.onclick = e => {
 
-  if(timeStop){
+  handleMenuClick(
+    e.clientX,
+    e.clientY
+  );
+};
+
+
+/* =====================================================
+   업데이트
+   ===================================================== */
+
+function update() {
+
+  if (gameMode !== "play") return;
+
+
+  /* 시간 정지 */
+
+  if (timeStop) {
+
     timeLeft--;
-    if(timeLeft<=0){ timeStop=false; cooldown=COOL_MAX; }
-  } else if(cooldown>0) cooldown--;
 
-  player.vx=0;
-  // 키보드 OR 터치버튼 입력 병합
-  if(keys["ArrowLeft"] || touchState.left) player.vx = -player.speed;
-  if(keys["ArrowRight"] || touchState.right) player.vx = player.speed;
-  
-  if((keys["ArrowUp"] || keys[" "] || touchState.jump) && player.onGround){
-    player.vy = -player.jump; 
+    if (timeLeft <= 0) {
+
+      timeStop = false;
+      cooldown = COOL_MAX;
+    }
+
+  } else if (cooldown > 0) {
+
+    cooldown--;
+  }
+
+
+  /* 이동 */
+
+  player.vx = 0;
+
+
+  if (
+    keys["ArrowLeft"] ||
+    touchState.left
+  ) {
+    player.vx = -player.speed;
+  }
+
+
+  if (
+    keys["ArrowRight"] ||
+    touchState.right
+  ) {
+    player.vx = player.speed;
+  }
+
+
+  /* 점프 */
+
+  if (
+    (
+      keys["ArrowUp"] ||
+      keys[" "] ||
+      touchState.jump
+    ) &&
+    player.onGround
+  ) {
+
+    player.vy = -player.jump;
+
     player.onGround = false;
   }
-  
-  if((keys["Shift"] || touchState.shift) && !timeStop && cooldown===0){
-    timeStop = true; 
+
+
+  /* 시간 정지 */
+
+  if (
+    (
+      keys["Shift"] ||
+      touchState.shift
+    ) &&
+    !timeStop &&
+    cooldown === 0
+  ) {
+
+    timeStop = true;
     timeLeft = STOP_MAX;
   }
 
-  player.vy+=gravity;
-  player.x+=player.vx;
-  player.y+=player.vy;
-  player.onGround=false;
 
-  player.x=Math.max(0,Math.min(768,player.x));
-  if(player.y+player.h>=groundY){
-    player.y=groundY-player.h;
-    player.vy=0; player.onGround=true;
+  /* 중력 */
+
+  player.vy += gravity;
+
+  player.x += player.vx;
+  player.y += player.vy;
+
+  player.onGround = false;
+
+
+  /* 화면 경계 */
+
+  player.x =
+    Math.max(
+      0,
+      Math.min(
+        768,
+        player.x
+      )
+    );
+
+
+  /* 바닥 */
+
+  if (
+    player.y + player.h >= groundY
+  ) {
+
+    player.y =
+      groundY - player.h;
+
+    player.vy = 0;
+
+    player.onGround = true;
   }
 
-  platforms.forEach(p=>{
-    if(player.vy>=0 &&
-       player.x+player.w>p.x &&
-       player.x<p.x+p.w &&
-       player.y+player.h<=p.y+player.vy &&
-       player.y+player.h+player.vy>=p.y){
-      player.y=p.y-player.h;
-      player.vy=0; player.onGround=true;
+
+  /* 발판 */
+
+  platforms.forEach(p => {
+
+    if (
+      player.vy >= 0 &&
+      player.x + player.w > p.x &&
+      player.x < p.x + p.w &&
+      player.y + player.h <=
+        p.y + player.vy &&
+      player.y + player.h +
+        player.vy >= p.y
+    ) {
+
+      player.y =
+        p.y - player.h;
+
+      player.vy = 0;
+
+      player.onGround = true;
     }
   });
 
-  if(!timeStop){
-    lasers.forEach(l=>{
-      if(l.rotateSpeed !== undefined){
+
+  /* 움직이는 장애물 */
+
+  if (!timeStop) {
+
+    lasers.forEach(l => {
+
+      if (
+        l.rotateSpeed !== undefined
+      ) {
+
         l.angle += l.rotateSpeed;
       }
-      if(l.vy !== undefined){
+
+
+      if (
+        l.vy !== undefined
+      ) {
+
         l.y += l.vy;
-        const minY = (l.minY !== undefined) ? l.minY : 120;
-        const maxY = (l.maxY !== undefined) ? l.maxY : 320;
-        if(l.y < minY || l.y + l.h > maxY){ l.vy *= -1; }
+
+        const minY =
+          l.minY !== undefined
+          ? l.minY
+          : 120;
+
+        const maxY =
+          l.maxY !== undefined
+          ? l.maxY
+          : 320;
+
+
+        if (
+          l.y < minY ||
+          l.y + l.h > maxY
+        ) {
+
+          l.vy *= -1;
+        }
       }
-      if(l.vx !== undefined){
+
+
+      if (
+        l.vx !== undefined
+      ) {
+
         l.x += l.vx;
-        const minX = (l.minX !== undefined) ? l.minX : 0;
-        const maxX = (l.maxX !== undefined) ? l.maxX : 800;
-        if(l.x < minX || l.x + l.w > maxX){ l.vx *= -1; }
+
+        const minX =
+          l.minX !== undefined
+          ? l.minX
+          : 0;
+
+        const maxX =
+          l.maxX !== undefined
+          ? l.maxX
+          : 800;
+
+
+        if (
+          l.x < minX ||
+          l.x + l.w > maxX
+        ) {
+
+          l.vx *= -1;
+        }
       }
     });
 
-    platforms.forEach(p=>{
-      if(p.vy !== undefined){
+
+    platforms.forEach(p => {
+
+      if (
+        p.vy !== undefined
+      ) {
+
         p.y += p.vy;
-        const min = (p.minY !== undefined) ? p.minY : 0;
-        const max = (p.maxY !== undefined) ? p.maxY : 450;
-        if(p.y < min || p.y + p.h > max){ p.vy *= -1; }
+
+        const min =
+          p.minY !== undefined
+          ? p.minY
+          : 0;
+
+        const max =
+          p.maxY !== undefined
+          ? p.maxY
+          : 450;
+
+
+        if (
+          p.y < min ||
+          p.y + p.h > max
+        ) {
+
+          p.vy *= -1;
+        }
       }
     });
   }
 
-  lasers.forEach(l=>{
+
+  /* 레이저 충돌 */
+
+  lasers.forEach(l => {
+
     let collided = false;
-    if(l.angle !== undefined){
-      collided = hitRotatedRect(player, l);
+
+
+    if (
+      l.angle !== undefined
+    ) {
+
+      collided =
+        hitRotatedRect(
+          player,
+          l
+        );
+
     } else {
-      collided = hit(player, l);
+
+      collided =
+        hit(player, l);
     }
-    if(collided){
+
+
+    if (collided) {
+
       deaths++;
+
       loadStage(stageIndex);
     }
   });
 
-  lava.forEach(l=>{
-    if(hitCircle(player,l)){
+
+  /* 톱니/용암 충돌 */
+
+  lava.forEach(l => {
+
+    if (
+      hitCircle(player, l)
+    ) {
+
       deaths++;
+
       loadStage(stageIndex);
     }
   });
 
-  if(hit(player,goal)){
+
+  /* 목표 */
+
+  if (
+    hit(player, goal)
+  ) {
+
     stageIndex++;
-    if(stageIndex>=stages.length){
-      gameMode="menu";
-    } else loadStage(stageIndex);
+
+    if (
+      stageIndex >= stages.length
+    ) {
+
+      gameMode = "menu";
+
+    } else {
+
+      loadStage(stageIndex);
+    }
   }
 
-  if(!timeStop){
+
+  if (!timeStop) {
+
     sawAngle += 0.15;
   }
 }
 
-/* ================= 그리기 ================= */
-function draw(){
-  ctx.fillStyle="#222";
-  ctx.fillRect(0,0,800,550);
 
-  if(gameMode==="menu"){
-    ctx.fillStyle="#fff";
-    ctx.font="28px sans-serif";
-    ctx.fillText("TIME STOP PUZZLE",270,150);
+/* =====================================================
+   그리기
+   ===================================================== */
 
-    ctx.font="18px sans-serif";
-    ctx.fillText("Stage Select",350,200);
+function draw() {
 
-    ctx.font="16px sans-serif";
-    stageButtons.forEach(b=>{
-      ctx.fillStyle="#333";
-      ctx.fillRect(b.x,b.y,b.w,b.h);
-      ctx.strokeStyle="#aaa";
-      ctx.strokeRect(b.x,b.y,b.w,b.h);
-      ctx.fillStyle="#fff";
-      ctx.fillText("Stage "+(b.stage+1), b.x+60, b.y+18);
+  ctx.fillStyle = "#222";
+
+  ctx.fillRect(
+    0,
+    0,
+    800,
+    550
+  );
+
+
+  /* =================================================
+     메뉴
+     ================================================= */
+
+  if (gameMode === "menu") {
+
+    ctx.fillStyle = "#fff";
+
+    ctx.font = "28px sans-serif";
+
+    ctx.fillText(
+      "TIME STOP PUZZLE",
+      270,
+      150
+    );
+
+
+    ctx.font = "18px sans-serif";
+
+    ctx.fillText(
+      "Stage Select",
+      350,
+      200
+    );
+
+
+    ctx.font = "16px sans-serif";
+
+
+    stageButtons.forEach(b => {
+
+      ctx.fillStyle = "#333";
+
+      ctx.fillRect(
+        b.x,
+        b.y,
+        b.w,
+        b.h
+      );
+
+
+      ctx.strokeStyle = "#aaa";
+
+      ctx.strokeRect(
+        b.x,
+        b.y,
+        b.w,
+        b.h
+      );
+
+
+      ctx.fillStyle = "#fff";
+
+      ctx.fillText(
+        "Stage " + (b.stage + 1),
+        b.x + 60,
+        b.y + 18
+      );
     });
+
+
     return;
   }
 
-  // 장애물(톱니바퀴/용암)
-  lava.forEach(l=>{
-    const cx = l.x + l.w/2;
-    const cy = l.y + l.h/2;
-    const r = Math.min(l.w,l.h)/2;
+
+  /* =================================================
+     장애물
+     ================================================= */
+
+  lava.forEach(l => {
+
+    const cx =
+      l.x + l.w / 2;
+
+    const cy =
+      l.y + l.h / 2;
+
+    const r =
+      Math.min(
+        l.w,
+        l.h
+      ) / 2;
+
 
     ctx.save();
-    ctx.translate(cx,cy);
-    ctx.rotate(sawAngle);
 
-    ctx.fillStyle="#ff3333";
+    ctx.translate(
+      cx,
+      cy
+    );
+
+    ctx.rotate(
+      sawAngle
+    );
+
+
+    ctx.fillStyle = "#ff3333";
+
+
     const teeth = 12;
+
     ctx.beginPath();
-    for(let i=0;i<teeth*2;i++){
-      const angle = i*Math.PI/teeth;
-      const radius = (i%2===0)? r : r*0.7;
-      const x = Math.cos(angle)*radius;
-      const y = Math.sin(angle)*radius;
-      if(i===0) ctx.moveTo(x,y);
-      else ctx.lineTo(x,y);
+
+
+    for (
+      let i = 0;
+      i < teeth * 2;
+      i++
+    ) {
+
+      const angle =
+        i * Math.PI / teeth;
+
+      const radius =
+        i % 2 === 0
+        ? r
+        : r * 0.7;
+
+
+      const x =
+        Math.cos(angle) * radius;
+
+      const y =
+        Math.sin(angle) * radius;
+
+
+      if (i === 0) {
+
+        ctx.moveTo(x, y);
+
+      } else {
+
+        ctx.lineTo(x, y);
+      }
     }
+
+
     ctx.closePath();
+
     ctx.fill();
+
     ctx.restore();
   });
 
-  // 게임 진행 영역 구분선 및 배경
-  ctx.fillStyle="#555";
-  ctx.fillRect(0,groundY,800,4); // 기존 바닥선
 
-  ctx.fillStyle="#1a1a1a";
-  ctx.fillRect(0,groundY+4,800,450-(groundY+4)); // 기존 바닥 채색
+  /* =================================================
+     게임 영역
+     ================================================= */
 
-  // 발판
-  ctx.fillStyle="#888";
-  platforms.forEach(p=>ctx.fillRect(p.x,p.y,p.w,p.h));
+  ctx.fillStyle = "#555";
 
-  // 레이저
-  lasers.forEach(l=>{
-    const cx = l.x + l.w/2;
-    const cy = l.y + l.h/2;
+  ctx.fillRect(
+    0,
+    groundY,
+    800,
+    4
+  );
+
+
+  ctx.fillStyle = "#1a1a1a";
+
+  ctx.fillRect(
+    0,
+    groundY + 4,
+    800,
+    450 - (groundY + 4)
+  );
+
+
+  /* 발판 */
+
+  ctx.fillStyle = "#888";
+
+  platforms.forEach(p => {
+
+    ctx.fillRect(
+      p.x,
+      p.y,
+      p.w,
+      p.h
+    );
+  });
+
+
+  /* 레이저 */
+
+  lasers.forEach(l => {
+
+    const cx =
+      l.x + l.w / 2;
+
+    const cy =
+      l.y + l.h / 2;
+
+
     ctx.save();
-    ctx.translate(cx, cy);
-    ctx.rotate(l.angle || 0);
-    ctx.fillStyle="#ff4d4d";
-    ctx.fillRect(-l.w/2, -l.h/2, l.w, l.h);
+
+    ctx.translate(
+      cx,
+      cy
+    );
+
+    ctx.rotate(
+      l.angle || 0
+    );
+
+
+    ctx.fillStyle = "#ff4d4d";
+
+
+    ctx.fillRect(
+      -l.w / 2,
+      -l.h / 2,
+      l.w,
+      l.h
+    );
+
+
     ctx.restore();
   });
 
-  // 플레이어 & 도착점
-  ctx.fillStyle="#4da6ff";
-  ctx.fillRect(player.x,player.y,player.w,player.h);
 
-  ctx.fillStyle="#4dff88";
-  ctx.fillRect(goal.x,goal.y,goal.w,goal.h);
+  /* 플레이어 */
 
-  // ===== UI 투명도 처리 =====
+  ctx.fillStyle = "#4da6ff";
+
+  ctx.fillRect(
+    player.x,
+    player.y,
+    player.w,
+    player.h
+  );
+
+
+  /* 목표 */
+
+  ctx.fillStyle = "#4dff88";
+
+  ctx.fillRect(
+    goal.x,
+    goal.y,
+    goal.w,
+    goal.h
+  );
+
+
+  /* =================================================
+     상단 UI
+     ================================================= */
+
   let uiAlpha = 1;
-  const uiArea = { x: 0, y: 0, w: 220, h: 100 };
-  if(player.x < uiArea.x + uiArea.w &&
-     player.x + player.w > uiArea.x &&
-     player.y < uiArea.y + uiArea.h &&
-     player.y + player.h > uiArea.y){
+
+
+  const uiArea = {
+    x: 0,
+    y: 0,
+    w: 220,
+    h: 100
+  };
+
+
+  if (
+    player.x <
+      uiArea.x + uiArea.w &&
+    player.x + player.w >
+      uiArea.x &&
+    player.y <
+      uiArea.y + uiArea.h &&
+    player.y + player.h >
+      uiArea.y
+  ) {
+
     uiAlpha = 0.3;
   }
 
+
   ctx.save();
+
   ctx.globalAlpha = uiAlpha;
 
-  ctx.fillStyle="#fff";
-  ctx.font="14px sans-serif";
-  ctx.fillText(stages[stageIndex].name,20,20);
-  ctx.fillText("Deaths: "+deaths,20,40);
-  ctx.fillText("TimeStop: "+(timeStop?timeLeft:cooldown),20,60);
 
-  /* 타임스탑 게이지 UI */
-  const barX = 20, barY = 80, barW = 200, barH = 14;
-  ctx.strokeStyle="#fff";
-  ctx.strokeRect(barX,barY,barW,barH);
+  ctx.fillStyle = "#fff";
 
-  let ratio = timeStop ? (timeLeft / STOP_MAX) : (1 - cooldown / COOL_MAX);
-  ctx.fillStyle = timeStop ? "#66ccff" : "#ffaa33";
-  ctx.fillRect(barX,barY,barW*ratio,barH);
+  ctx.font = "14px sans-serif";
 
-  ctx.fillStyle="#fff";
-  ctx.font="12px sans-serif";
-  ctx.fillText("Time Stop", barX, barY-5);
+
+  ctx.fillText(
+    stages[stageIndex].name,
+    20,
+    20
+  );
+
+
+  ctx.fillText(
+    "Deaths: " + deaths,
+    20,
+    40
+  );
+
+
+  ctx.fillText(
+    "TimeStop: " +
+    (
+      timeStop
+      ? timeLeft
+      : cooldown
+    ),
+    20,
+    60
+  );
+
+
+  /* 타임스탑 게이지 */
+
+  const barX = 20;
+  const barY = 80;
+  const barW = 200;
+  const barH = 14;
+
+
+  ctx.strokeStyle = "#fff";
+
+  ctx.strokeRect(
+    barX,
+    barY,
+    barW,
+    barH
+  );
+
+
+  let ratio =
+    timeStop
+    ? timeLeft / STOP_MAX
+    : 1 - cooldown / COOL_MAX;
+
+
+  ctx.fillStyle =
+    timeStop
+    ? "#66ccff"
+    : "#ffaa33";
+
+
+  ctx.fillRect(
+    barX,
+    barY,
+    barW * ratio,
+    barH
+  );
+
+
+  ctx.fillStyle = "#fff";
+
+  ctx.font = "12px sans-serif";
+
+
+  ctx.fillText(
+    "Time Stop",
+    barX,
+    barY - 5
+  );
+
+
   ctx.restore();
 
-  /* 시간 정지 효과 */
-  if(timeStop){
-    ctx.fillStyle="rgba(200,200,200,0.2)";
-    ctx.fillRect(0,0,800,450);
+
+  /* =================================================
+     시간 정지 효과
+     ================================================= */
+
+  if (timeStop) {
+
+    ctx.fillStyle =
+      "rgba(200,200,200,0.2)";
+
+    ctx.fillRect(
+      0,
+      0,
+      800,
+      450
+    );
   }
 
-  /* ================= 모바일 터치 컨트롤러 영역 ================= */
-  // 컨트롤러 패널 배경
+
+  /* =================================================
+     모바일 컨트롤 영역
+     ================================================= */
+
   ctx.fillStyle = "#111";
-  ctx.fillRect(0, 450, 800, 100);
+
+  ctx.fillRect(
+    0,
+    450,
+    800,
+    100
+  );
+
+
   ctx.strokeStyle = "#444";
+
   ctx.lineWidth = 2;
+
   ctx.beginPath();
-  ctx.moveTo(0, 450);
-  ctx.lineTo(800, 450);
+
+  ctx.moveTo(
+    0,
+    450
+  );
+
+  ctx.lineTo(
+    800,
+    450
+  );
+
   ctx.stroke();
 
-  // 각 가상 버튼 그리기
+
+  /* =================================================
+     버튼
+     ================================================= */
+
   for (const key in buttons) {
+
     const b = buttons[key];
-    const isPressed = touchState[key];
 
-    ctx.fillStyle = isPressed ? "#555" : "#333";
-    ctx.fillRect(b.x, b.y, b.w, b.h);
+    const isPressed =
+      touchState[key];
 
-    ctx.strokeStyle = isPressed ? "#fff" : "#888";
+
+    ctx.fillStyle =
+      isPressed
+      ? "#555"
+      : "#333";
+
+
+    ctx.fillRect(
+      b.x,
+      b.y,
+      b.w,
+      b.h
+    );
+
+
+    ctx.strokeStyle =
+      isPressed
+      ? "#fff"
+      : "#888";
+
+
     ctx.lineWidth = 2;
-    ctx.strokeRect(b.x, b.y, b.w, b.h);
 
-    ctx.fillStyle = isPressed ? "#fff" : "#ccc";
-    ctx.font = "bold 16px sans-serif";
+
+    ctx.strokeRect(
+      b.x,
+      b.y,
+      b.w,
+      b.h
+    );
+
+
+    ctx.fillStyle =
+      isPressed
+      ? "#fff"
+      : "#ccc";
+
+
+    ctx.font =
+      "bold 16px sans-serif";
+
+
     ctx.textAlign = "center";
+
     ctx.textBaseline = "middle";
-    ctx.fillText(b.label, b.x + b.w / 2, b.y + b.h / 2);
+
+
+    ctx.fillText(
+      b.label,
+      b.x + b.w / 2,
+      b.y + b.h / 2
+    );
   }
-  ctx.textAlign = "left"; // 텍스트 얼라인 복구
+
+
+  ctx.textAlign = "left";
+
+  ctx.textBaseline = "alphabetic";
 }
 
-/* ================= 루프 ================= */
-function loop(){
+
+/* =====================================================
+   게임 루프
+   ===================================================== */
+
+function loop() {
+
   update();
+
   draw();
+
   requestAnimationFrame(loop);
 }
+
+
 loop();
+
+
+/* =====================================================
+   화면 회전/크기 변경 대응
+   ===================================================== */
+
+addEventListener(
+  "resize",
+  () => {
+
+    /*
+      CSS가 자동으로 캔버스를
+      현재 모바일 방향에 맞춰 조절한다.
+
+      게임 내부 좌표는 800×550 그대로라서
+      스테이지 자체는 변하지 않는다.
+    */
+
+    updateTouchState({
+      preventDefault: () => {},
+      touches: []
+    });
+  }
+);
+
 </script>
+
 </body>
-</html>
+  </html>
